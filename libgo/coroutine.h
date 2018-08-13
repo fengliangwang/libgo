@@ -1,97 +1,7 @@
 #pragma once
-#include <libgo/scheduler.h>
-#include <libgo/channel.h>
-#include <libgo/thread_pool.h>
-#include <libgo/co_rwmutex.h>
-#include <libgo/debugger.h>
-#if __linux__
-#include "linux_glibc_hook.h"
-#endif
-
-namespace co
-{
-
-struct __go
-{
-    __go() = default;
-
-    __go(const char* file, int lineno) : file_(file), lineno_(lineno) {}
-
-    __go(const char* file, int lineno, std::size_t stack_size)
-        : file_(file), lineno_(lineno), stack_size_(stack_size) {}
-
-    __go(const char* file, int lineno, std::size_t stack_size, int dispatch)
-        : file_(file), lineno_(lineno), stack_size_(stack_size), dispatch_(dispatch) {}
-
-    template <typename Arg>
-    ALWAYS_INLINE void operator-(Arg const& arg)
-    {
-        Scheduler::getInstance().CreateTask(arg, stack_size_, file_, lineno_, dispatch_);
-    }
-
-    const char* file_ = nullptr;
-    int lineno_ = 0;
-    std::size_t stack_size_ = 0;
-    int dispatch_ = egod_default;
-};
-
-// co_channel
-template <typename T>
-using co_chan = Channel<T>;
-
-// co_timer_add will returns timer_id; The timer_id type is uint64_t.
-template <typename Arg, typename F>
-inline TimerId co_timer_add(Arg const& duration_or_timepoint, F const& callback) {
-    return g_Scheduler.ExpireAt(duration_or_timepoint, callback);
-}
-
-// co_timer_cancel will returns boolean type;
-//   if cancel successfully it returns true,
-//   else it returns false;
-inline bool co_timer_cancel(TimerId timer_id) {
-    return g_Scheduler.CancelTimer(timer_id);
-}
-
-// co_timer_block_cancel will returns boolean type;
-//   if cancel successfully it returns true,
-//   else it returns false;
-//
-// This function will block wait timer occurred done, if cancel error.
-inline bool co_timer_block_cancel(TimerId timer_id) {
-    return g_Scheduler.BlockCancelTimer(timer_id);
-}
-
-template <typename R>
-struct __async_wait
-{
-    R result_;
-    Channel<R> ch_;
-
-    __async_wait() : ch_(1) {}
-
-    template <typename F>
-    ALWAYS_INLINE R&& operator-(F const& fn)
-    {
-        g_Scheduler.GetThreadPool().AsyncWait<R>(ch_, fn);
-        ch_ >> result_;
-        return std::move(result_);
-    }
-};
-
-template <>
-struct __async_wait<void>
-{
-    Channel<void> ch_;
-
-    template <typename F>
-    ALWAYS_INLINE void operator-(F const& fn)
-    {
-        g_Scheduler.GetThreadPool().AsyncWait<void>(ch_, fn);
-        ch_ >> nullptr;
-    }
-};
-
-} //namespace co
+#include <libgo/pp.h>
+#include <libgo/syntax_helper.h>
+#include <libgo/defer.h>
 
 using ::co::egod_default;
 using ::co::egod_random;
@@ -99,8 +9,14 @@ using ::co::egod_robin;
 using ::co::egod_local_thread;
 
 #define go ::co::__go(__FILE__, __LINE__)-
-#define go_stack(size) ::co::__go(__FILE__, __LINE__, size)-
-#define go_dispatch(dispatch) ::co::__go(__FILE__, __LINE__, 0, dispatch)-
+
+// create coroutine options
+#define co_stack(size) ::co::__go_option<::co::opt_stack_size>{size}-
+#define co_dispatch(thread_id_or_type) ::co::__go_option<::co::opt_dispatch>{thread_id_or_type}-
+#define co_affinity() ::co::__go_option<::co::opt_affinity>{true}-
+
+#define go_stack(size) go co_stack(size)
+#define go_dispatch(thread_id_or_type) go co_dispatch(thread_id_or_type)
 
 #define co_yield do { g_Scheduler.CoYield(); } while (0)
 
@@ -136,11 +52,17 @@ using ::co::co_timer_block_cancel;
 // co_debugger
 #define co_debugger ::co::CoDebugger::getInstance()
 
+// coroutine local storage
+#define co_cls(type, ...) CLS(type, ##__VA_ARGS__)
+#define co_cls_ref(type) CLS_REF(type)
+
+// co_defer
+#define co_defer auto LIBGO_PP_CAT(__defer_, __COUNTER__) = ::co::__defer_op()-
+//#define co_last_defer() LIBGO_PP_CAT(__defer_, LIBGO_PP_DEC(__COUNTER__))
+#define co_last_defer() ::co::GetLastDefer()
+#define co_defer_scope co_defer [&]
+
 // co_listener
-namespace co
-{
-typedef	::co::Scheduler::TaskListener co_listener;
-}
 using ::co::co_listener;
 
 inline void set_co_listener(::co::co_listener* listener) {

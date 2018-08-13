@@ -29,6 +29,7 @@ libgo有以下特点：
  *   6.动态链接和静态链接全都支持，便于使用C++11的用户静态链接生成可执行文件并部署至低版本的linux系统上。
  *   7.提供协程锁(co_mutex), 定时器, channel等特性, 帮助用户更加容易地编写程序. 
  *   8.网络性能强劲，超越boost.asio异步模型；尤其在处理小包和多线程并行方面非常强大。
+ *   9.支持协程局部变量(CLS), 并且完全覆盖TLS的所有使用场景(详见教程代码sample13).
  
  *   如果你发现了任何bug、有好的建议、或使用上有不明之处，可以提交到issue，也可以直接联系作者:
       email: 289633152@qq.com  QQ交流群: 296561497
@@ -37,6 +38,15 @@ libgo有以下特点：
 
  
 ##### libgo的编译与使用:
+
+ *    Vcpkg:
+
+        如果你已经安装了vcpkg，可以直接使用vcpkg安装：
+
+            $ vcpkg install libgo
+
+        由于boost.context库在vcpkg上编译存在bug，此版本暂时使用ucontext做上下文切换的版本，性能上会略有下降
+        待bug修复，会改为使用boost的版本，以提供更好的性能给用户
 
  *    Linux: 
 
@@ -47,18 +57,13 @@ libgo有以下特点：
 				使用方式：
 					$ cmake .. -DENABLE_BOOST_CONTEXT=ON
 
-			ENABLE_BOOST_COROUTINE
-				libgo在Linux系统上默认使用ucontext做协程上下文切换，开启此选项将使用boost.coroutine来替代ucontext.
-				使用方式：
-					$ cmake .. -DENABLE_BOOST_COROUTINE=ON
-
 			DISABLE_HOOK
 				禁止hook syscall，开启此选项后，网络io相关的syscall将恢复系统默认的行为，
 				协程中使用阻塞式网络io将可能真正阻塞线程，如无特殊需求请勿开启此选项.
 				使用方式：
 					$ cmake .. -DDISABLE_HOOK=ON
 					
-			不开启ENABLE_BOOST_CONTEXT和ENABLE_BOOST_COROUTINE选项时, libgo不依赖boost库，可以直接使用，仅测试代码依赖boost库。
+			不开启ENABLE_BOOST_CONTEXT选项时, libgo不依赖boost库，可以直接使用，仅测试代码依赖boost库。
  
         1.如果你安装了ucorf或libgonet，那么你已经使用默认的方式安装过libgo了，如果不想设置如上的选项，可以跳过第2步.
  

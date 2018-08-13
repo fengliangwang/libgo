@@ -1,5 +1,7 @@
 #pragma once
 #include <unistd.h>
+#include <resolv.h>
+#include <netdb.h>
 
 extern "C" {
 
@@ -40,6 +42,10 @@ extern sendmsg_t sendmsg_f;
 
 typedef int(*poll_t)(struct pollfd *fds, nfds_t nfds, int timeout);
 extern poll_t poll_f;
+
+typedef int (*epoll_wait_t)(int epfd, struct epoll_event *events,
+        int maxevents, int timeout);
+extern epoll_wait_t epoll_wait_f;
 
 typedef int(*select_t)(int nfds, fd_set *readfds, fd_set *writefds,
         fd_set *exceptfds, struct timeval *timeout);
@@ -89,12 +95,27 @@ extern fclose_t fclose_f;
 
 // DNS by libcares
 // gethostent
+
 // gethostbyname
-// gethostbyname2
 // gethostbyname_r
+typedef int (*gethostbyname_r_t) (const char *__restrict __name,
+			    struct hostent *__restrict __result_buf,
+			    char *__restrict __buf, size_t __buflen,
+			    struct hostent **__restrict __result,
+			    int *__restrict __h_errnop);
+extern gethostbyname_r_t gethostbyname_r_f;
+// gethostbyname2
 // gethostbyname2_r
+typedef int (*gethostbyname2_r_t) (const char *name, int af,
+        struct hostent *ret, char *buf, size_t buflen,
+        struct hostent **result, int *h_errnop);
+extern gethostbyname2_r_t gethostbyname2_r_f;
 // gethostbyaddr
 // gethostbyaddr_r
+typedef int (*gethostbyaddr_r_t) (const void *addr, socklen_t len, int type,
+        struct hostent *ret, char *buf, size_t buflen,
+        struct hostent **result, int *h_errnop);
+extern gethostbyaddr_r_t gethostbyaddr_r_f;
 
 } //extern "C"
 
@@ -115,4 +136,5 @@ namespace co {
     extern void reset_readable(int fd);
     extern void reset_writable(int fd);
 
+    extern void coroutine_hook_init();
 } //namespace co

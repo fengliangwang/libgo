@@ -5,6 +5,7 @@
 #include <libgo/timer.h>
 #include <string.h>
 #include <libgo/util.h>
+#include <libgo/co_local_storage_fwd.h>
 #include "fd_context.h"
 
 namespace co
@@ -35,6 +36,7 @@ struct Task
     TaskState state_ = TaskState::init;
     uint64_t yield_count_ = 0;
     Processer* proc_ = NULL;
+    bool is_affinity_ = false;  // 协程亲缘性
     Context ctx_;
     std::string debug_info_;
     TaskF fn_;
@@ -53,6 +55,12 @@ struct Task
 
     int sleep_ms_ = 0;                  // 睡眠时间
 
+    // defer专用的cls存储
+    void *defer_cls_ = nullptr;
+
+    // cls变量表
+    CLSMap cls_map_;
+
     explicit Task(TaskF const& fn, std::size_t stack_size,
             const char* file, int lineno);
     ~Task();
@@ -70,6 +78,8 @@ struct Task
 
     void SetDebugInfo(std::string const& info);
     const char* DebugInfo();
+
+    inline CLSMap* GetCLSMap() { return &cls_map_; }
 
     void Task_CB();
 

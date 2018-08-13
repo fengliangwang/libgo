@@ -10,50 +10,30 @@ endif()
 
 message("------------ Options -------------")
 message("  CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
+message("  CMAKE_COMMAND: ${CMAKE_COMMAND}")
 
-aux_source_directory(libgo CO_SRC_LIST)
+aux_source_directory(${PROJECT_SOURCE_DIR}/libgo CO_SRC_LIST)
 
 message ("  BOOST_ROOT: ${BOOST_ROOT}")
 option(DEPEND_BOOST "link boost" OFF)
-if (ENABLE_BOOST_COROUTINE)
+if (ENABLE_BOOST_CONTEXT)
     include (${PROJECT_SOURCE_DIR}/boost.cmake)
-    message ("  layer_context: boost.coroutine")
+    message ("  layer_context: boost.context")
     set(DEPEND_BOOST ON)
-    set(USE_BOOST_COROUTINE 1)
-    set(USE_BOOST_CONTEXT 0)
+    set(USE_BOOST_CONTEXT 1)
     set(USE_UCONTEXT 0)
     set(USE_FIBER 0)
 else()
-    if (ENABLE_BOOST_CONTEXT)
-        include (${PROJECT_SOURCE_DIR}/boost.cmake)
-        message ("  layer_context: boost.context")
-        set(DEPEND_BOOST ON)
-        set(USE_BOOST_COROUTINE 0)
-        set(USE_BOOST_CONTEXT 1)
-        set(USE_UCONTEXT 0)
+    set(USE_BOOST_CONTEXT 0)
+    if (UNIX)
+        set(USE_UCONTEXT 1)
         set(USE_FIBER 0)
+        message ("  layer_context: ucontext")
     else()
-        set(USE_BOOST_COROUTINE 0)
-        set(USE_BOOST_CONTEXT 0)
-        if (UNIX)
-            set(USE_UCONTEXT 1)
-            set(USE_FIBER 0)
-            message ("  layer_context: ucontext")
-        else()
-            set(USE_UCONTEXT 0)
-            set(USE_FIBER 1)
-            message ("  layer_context: fiber")
-        endif()
+        set(USE_UCONTEXT 0)
+        set(USE_FIBER 1)
+        message ("  layer_context: fiber")
     endif()
-endif()
-
-option(WITH_CARES "compile with libcares" OFF)
-if (WITH_CARES)
-    set(WITH_CARES 1)
-    message ("  use cares: yes")
-else()
-    set(WITH_CARES 0)
-    message ("  use cares: no")
 endif()
 
 option(WITH_SAFE_SIGNAL "compile with SAFE_SIGNAL" OFF)
@@ -89,11 +69,16 @@ else()
     message ("  enable_hook: yes")
 endif()
 
+if (CMAKE_TOOLCHAIN_FILE)
+    set(DISABLE_DYNAMIC_LIB ON)
+endif()
 if (DISABLE_DYNAMIC_LIB)
     message ("  build_dynamic_lib: no")
 else()
     message ("  build_dynamic_lib: yes")
 endif()
+
+message ("  cmake_toolchain_file: ${CMAKE_TOOLCHAIN_FILE}")
 
 configure_file(${PROJECT_SOURCE_DIR}/libgo/cmake_config.h.in ${PROJECT_SOURCE_DIR}/libgo/cmake_config.h)
 message("----------------------------------")
@@ -111,6 +96,7 @@ if (UNIX)
 
     if (DEPEND_BOOST)
         set(LINK_LIBS "-lboost_coroutine -lboost_context -lboost_thread -lboost_system -pthread")
+        #set(LINK_LIBS "PRIVATE ${Boost_LIBRARIES} -pthread")
     else ()
         aux_source_directory(${PROJECT_SOURCE_DIR}/libgo/ctx_ucontext CO_SRC_LIST)
     endif()
@@ -149,8 +135,8 @@ endif()
 
 if (UNIX)
     set(CMAKE_CXX_FLAGS "-std=c++11 -fPIC -Wall -pthread ${CMAKE_CXX_FLAGS}")
-    set(CMAKE_CXX_FLAGS_DEBUG "-g -pg ${CMAKE_CXX_FLAGS} -Werror")
-    set(CMAKE_CXX_FLAGS_RELEASE "-g -O3 ${CMAKE_CXX_FLAGS} -Werror")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g -pg ${CMAKE_CXX_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELEASE "-g -O3 ${CMAKE_CXX_FLAGS}")
 else ()
     if (NOT DISABLE_DYNAMIC_LIB)
 	    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MDd")
@@ -195,8 +181,8 @@ if (UNIX)
         PATTERN "ctx_ucontext" EXCLUDE
         PATTERN "*.h")
     install(DIRECTORY ${PROJECT_SOURCE_DIR}/libgo/linux/ DESTINATION "include/libgo" FILES_MATCHING PATTERN "*.h")
-    file(WRITE ${PROJECT_SOURCE_DIR}/tools/libgo.conf "${CMAKE_INSTALL_PREFIX}/lib")
-    install(FILES ${PROJECT_SOURCE_DIR}/tools/libgo.conf DESTINATION "/etc/ld.so.conf.d")
+    #file(WRITE ${PROJECT_SOURCE_DIR}/tools/libgo.conf "${CMAKE_INSTALL_PREFIX}/lib")
+    #install(FILES ${PROJECT_SOURCE_DIR}/tools/libgo.conf DESTINATION "/etc/ld.so.conf.d")
     if (DEPEND_BOOST)
         install(DIRECTORY ${PROJECT_SOURCE_DIR}/libgo/ctx_boost_coroutine/ DESTINATION "include/libgo/ctx_boost_coroutine" FILES_MATCHING PATTERN "*.h")
         install(DIRECTORY ${PROJECT_SOURCE_DIR}/libgo/ctx_boost_context/ DESTINATION "include/libgo/ctx_boost_context" FILES_MATCHING PATTERN "*.h")
@@ -234,7 +220,7 @@ if (UNIX)
     )
 
     add_custom_target(test_all
-        COMMAND ${CMAKE_COMMAND} -DOPEN_SUBDIRECTORY_TEST_ALL=ON -DOPEN_SUBDIRECTORY_TEST_DYNAMIC=OFF -DSMALL_TEST=OFF -DTEST_STATIC_LINK=ON -DTEST_LINK_FLAGS="${TEST_LINK_FLAGS}" ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -DOPEN_SUBDIRECTORY_TEST_ALL=ON -DOPEN_SUBDIRECTORY_TEST_DYNAMIC=OFF -DSMALL_TEST=OFF -DTEST_STATIC_LINK=ON -DTEST_LINK_FLAGS="${TEST_LINK_FLAGS}" -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" -DDISABLE_DYNAMIC_LIB="${DISABLE_DYNAMIC_LIB}" ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target all
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Add subdirectory test_all"
@@ -244,19 +230,22 @@ if (UNIX)
         add_subdirectory("${PROJECT_SOURCE_DIR}/test/gtest_unit")
     endif()
 
-    add_custom_target(test_dynamic
-        COMMAND ${CMAKE_COMMAND} -DOPEN_SUBDIRECTORY_TEST_DYNAMIC=ON -DOPEN_SUBDIRECTORY_TEST_ALL=OFF -DSMALL_TEST=OFF -DTEST_STATIC_LINK=OFF -DTEST_LINK_FLAGS="${TEST_LINK_FLAGS}" ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target all
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "Add subdirectory test_dynamic"
-    )
+    if (NOT DISABLE_DYNAMIC_LIB)
+        add_custom_target(test_dynamic
+            COMMAND ${CMAKE_COMMAND} -DOPEN_SUBDIRECTORY_TEST_DYNAMIC=ON -DOPEN_SUBDIRECTORY_TEST_ALL=OFF -DSMALL_TEST=OFF -DTEST_STATIC_LINK=OFF -DTEST_LINK_FLAGS="${TEST_LINK_FLAGS}" -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" ${CMAKE_SOURCE_DIR}
+            COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target all
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "Add subdirectory test_dynamic"
+            )
+    endif()
+
     option(OPEN_SUBDIRECTORY_TEST_DYNAMIC "" OFF)
     if (OPEN_SUBDIRECTORY_TEST_DYNAMIC)
         add_subdirectory("${PROJECT_SOURCE_DIR}/test/gtest_unit")
     endif()
 
     add_custom_target(test_small
-        COMMAND ${CMAKE_COMMAND} -DOPEN_SUBDIRECTORY_TEST_DYNAMIC=OFF -DOPEN_SUBDIRECTORY_TEST_ALL=OFF -DSMALL_TEST=ON -DTEST_STATIC_LINK=OFF -DTEST_LINK_FLAGS="${TEST_LINK_FLAGS}" ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -DOPEN_SUBDIRECTORY_TEST_DYNAMIC=OFF -DOPEN_SUBDIRECTORY_TEST_ALL=OFF -DSMALL_TEST=ON -DTEST_STATIC_LINK=OFF -DTEST_LINK_FLAGS="${TEST_LINK_FLAGS}" -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" -DDISABLE_DYNAMIC_LIB="${DISABLE_DYNAMIC_LIB}" ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target all
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Add subdirectory test_small"
